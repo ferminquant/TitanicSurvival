@@ -1,6 +1,6 @@
 rm(list=ls(all=TRUE))
-library(neuralnet)
 
+set.seed(1320)
 data = read.csv("train.csv", header = TRUE)
 data$Age = ifelse(is.na(data$Age), -1, data$Age)
 formula = Survived ~ Pclass + Sex + Age + SibSp + Parch + Fare + Embarked
@@ -13,7 +13,7 @@ final_specificity = NULL
 final_fscore = NULL
 final_fp_rate = NULL
 
-for(j in 1:1){
+for(j in 1:100){
   print(sprintf("Start %i", j))
   accuracy = NULL
   error = NULL
@@ -27,7 +27,7 @@ for(j in 1:1){
   data = data[sample(NROW(data)),]
   
   #Create 10 equally size folds
-  n_folds = 4
+  n_folds = 10
   folds = cut(seq(1,NROW(data)),breaks=n_folds,labels=FALSE)
   
   #Perform 10 fold cross validation
@@ -40,36 +40,19 @@ for(j in 1:1){
     test_data = data[indexes, ]
     train_data = data[-indexes, ]
     
-    #model = lm(formula, train_data)
-    #model = glm(formula, family = binomial(link='logit'), train_data)
+    model = glm(formula, family = binomial(link='logit'), train_data)
     
-    #neural network
-    m = model.matrix(~ Survived + Pclass + Sex + Age + SibSp + Parch + Fare + Embarked, train_data)
-    model = neuralnet( 
-      Survived ~ Pclass + Sexmale + Age + SibSp + Parch + Fare + EmbarkedC + EmbarkedQ + EmbarkedS, 
-      data=m, hidden=c(1), threshold=0.01, stepmax=1e+06, lifesign='full',
-      lifesign.step = 25000, rep=1
-    )
+    source("missingLevelsToNA.R")
+    test_data = missingLevelsToNA(model,test_data)
     
-    #only glm
-    #source("missingLevelsToNA.R")
-    #test_data = missingLevelsToNA(model,test_data)
-    
-    # lm predict
-    #test_data$prediction = predict(model, test_data)
     #glm predict
-    #test_data$prediction = predict(model, newdata=test_data, type='response')
-    #neural net prediction
-    n = model.matrix(~ Survived + Pclass + Sex + Age + SibSp + Parch + Fare + Embarked, test_data)
-    n = n[,3:11]
-    test_data$prediction = compute(model,n)$net.result
-    
+    test_data$prediction = predict(model, newdata=test_data, type='response')
     
     threshold = 0.5
     test_data$result = ifelse(test_data$Survived == 0 & test_data$prediction <  threshold, 'TN', 
                               ifelse(test_data$Survived == 0 & test_data$prediction >= threshold, 'FP', 
                                      ifelse(test_data$Survived == 1 & test_data$prediction >= threshold, 'TP', 'FN')))
-    #table(test_data$Survived>=1, test_data$prediction > 0.5)
+    
     tmp = table(test_data$result)
     
     if(is.na(tmp['FN'])){FN = 0} else {FN = tmp['FN']}
@@ -78,12 +61,6 @@ for(j in 1:1){
     if(is.na(tmp['TP'])){TP = 0} else {TP = tmp['TP']}
     
     accuracy[i] = as.numeric((TN+TP)/sum(tmp))
-    
-    if(is.na(accuracy[i])){ 
-      print("Error")  
-      break 
-    }
-    
     error[i] = as.numeric((FN+FP)/sum(tmp))
     
     #of all predicted positives, how many were really positive
