@@ -1,6 +1,6 @@
 library(h2o)
 library(parallel)
-#localH2O = h2o.init(nthreads=detectCores()-1)
+localH2O = h2o.init(nthreads=detectCores()-1)
 
 #set.seed(1320)
 data = read.csv("train.csv", header = TRUE)
@@ -16,21 +16,22 @@ hdata_test = hdata_split[[1]]
 hdata_train = hdata_split[[2]]
 
 # for manual testing
-nn = h2o.deeplearning(x = 2:8, y = 1, training_frame = hdata,#_train,
-                      #validation_frame = hdata_test,
-                      #nfolds = 10,
-                      hidden = c(10),
-                      standardize = TRUE,
-                      activation = 'Tanh',
-                      epochs = 100,
-                      seed = 1320,
-                      shuffle_training_data = TRUE,
-                      variable_importances = TRUE)
+# nn = h2o.deeplearning(x = 2:8, y = 1, training_frame = hdata,_train,
+#                       validation_frame = hdata_test,
+#                       nfolds = 10,
+#                       hidden = c(10),
+#                       standardize = TRUE,
+#                       activation = 'Tanh',
+#                       epochs = 100,
+#                       seed = 1320,
+#                       shuffle_training_data = TRUE,
+#                       variable_importances = TRUE)
 #summary(nn)
 
 #for hyperparameter optimization
 models <- c()
 tmp_min_err = 10000
+cv_min_err = 10000
 i = 0
 
 #Array to store distribution of model accuracy during hyperparameter optimization
@@ -40,9 +41,9 @@ for (i in 1:100) {
 }
 
 i = 0
-for (i in 1:10) {
+for (i in 276:1000) {
 #while (TRUE) {
-  i = i + 1
+  #i = i + 1
   rand_activation <- c("Tanh", "TanhWithDropout", "Rectifier","RectifierWithDropout", "Maxout", "MaxoutWithDropout")[sample(1:6,1)]
   rand_numlayers <- sample(2:5,1)
   rand_hidden <- c(sample(10:150,rand_numlayers,T))
@@ -60,9 +61,10 @@ for (i in 1:10) {
   print(i)
   print(rand_activation)
   print(rand_hidden)
-  dlmodel <- h2o.deeplearning(x=2:8, y=1, training_frame = hdata_train, 
-                              validation_frame = hdata_test, 
-                              epochs=10,
+  dlmodel <- h2o.deeplearning(x=2:8, y=1, training_frame = hdata,#_train, 
+                              #validation_frame = hdata_test, 
+                              nfolds = 10,
+                              epochs = 1,
                               activation=rand_activation, 
                               hidden=rand_hidden, 
                               l1=rand_l1, 
@@ -73,31 +75,34 @@ for (i in 1:10) {
   
   #models <- c(models, dlmodel)
   
-  tmp = length(dlmodel@model$scoring_history$validation_classification_error)
-  tmp_err <- dlmodel@model$scoring_history$validation_classification_error[tmp]
+  #tmp = length(dlmodel@model$scoring_history$validation_classification_error)
+  #tmp_err <- dlmodel@model$scoring_history$validation_classification_error[tmp]
+  cv_err = as.numeric(dlmodel@model$cross_validation_metrics_summary[3,1])
   
-  j = round((1-tmp_err)*100,0)
+  #j = round((1-tmp_err)*100,0)
+  j = round((1-cv_err)*100,0)
   acc_dist[j] = acc_dist[j]+1
   
-  if (tmp_err < tmp_min_err) {
-    tmp_min_err = tmp_err
-    tmp_best_model = dlmodel
+  if (cv_err < cv_min_err) {
+    cv_min_err = cv_err
+    best_model = dlmodel
     tmp_i = i
     tmp_act = rand_activation
     tmp_hidden = rand_hidden
   }
-  print(sprintf("Accuracy %f; Max Accuracy %f",1-tmp_err,1-tmp_min_err))
+  print(sprintf("Accuracy %f; Max Accuracy %f",1-cv_err,1-cv_min_err))
   print(sprintf("Best params: %i | %s | %s ", tmp_i, tmp_act, paste(tmp_hidden,collapse=" ")))
-  if ((1-tmp_err) >= 0.90){
-    break
-  }
+  # if ((1-tmp_err) >= 0.90){
+  #   break
+  # }
 }
 
-best_err = tmp_min_err
-best_model = tmp_best_model
+#best_err = tmp_min_err
+best_err = cv_min_err
+best_model = best_model
 
 # Save, Load, and Continue Training
-#h2o.saveModel(best_model, path=getwd(), force=T)
+#h2o.saveModel(bestRF, path=getwd(), force=T)
 #dlmodel_loaded <- h2o.loadModel(paste(getwd(),"DeepLearning_model_R_1482117924172_6685",sep="/"))
 # dlmodel_continued_again <- h2o.deeplearning(x=2:8, y=1, 
 #                                             training_frame = hdata_train, 
